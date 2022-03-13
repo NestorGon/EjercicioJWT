@@ -1,61 +1,105 @@
 var express = require("express");
 const Joi = require("joi");
-const movie = require("../controllers/movie");
-//const Movie = require("../models/movie");
-
+const Movie = require("../models/movie");
+var HandlerGenerator = require("../handlegenerator.js");
+var middleware = require("../middleware.js");
+HandlerGenerator = new HandlerGenerator();
 var router = express.Router();
+
+router.post( '/login', HandlerGenerator.login);
 
 const schema = Joi.object({
   name: Joi.string().min(3).max(30).required(),
 });
 
-router.get("/movies", function (req, res, next) {
-  movie.getMovies().then((movies) => {
-    console.log("Movies", movies);
-    res.send(movies);
-  });
-});
-
-router.get("/movies/:id", function (req, res, next) {
-  movie.getMovie(req.params.id).then((movie) => {
-    console.log("Movies", movie);
-    if (movie === null) {
-      res.status(404).send("La película con el id no existe");
-    }
-    res.send(movie);
-  });
-});
-
-router.post("/movies", function (req, res, next) {
-  const { error } = schema.validate(req.body);
-  if (error) {
-    return res.status(404).send(error);
+router.get("/movies", middleware.checkToken, function (req, res, next) {
+  if (req.role!=='Lectura') {
+    res.send( 400 ).json( {
+      success: false,
+      message: 'Role failed'
+    } );
+  } else {
+    Movie.findAll().then( result => {
+      console.log("Movies", result);
+      res.send(result);
+    });
   }
-
-  movie.createMovie(req.body).then((movie) => {
-    console.log("Movies", movie);
-    res.send(movie);
-  });
 });
 
-router.put("/movies/:id", function (req, res, next) {
-  movie.updateMovie(req.params.id, req.body).then((movie) => {
-    console.log("movie", movie);
-    if (movie.matchedCount === 0) {
-      return res.status(404).send("La película con el id no existe");
-    }
-    res.send(movie);
-  });
+router.get("/movies/:id", middleware.checkToken, function (req, res, next) {
+  if (req.role!=='Lectura') {
+    res.send(400).json( {
+      success: false,
+      message: 'Role failed'
+    } );
+  } else { 
+    Movie.findByPk(req.params.id).then( result => {
+      console.log("Movies", result);
+      if (result === null) {
+       res.status(404).send("La película con el id no existe");
+      }
+      res.send(result);
+   });
+  }
 });
 
-router.delete("/movies/:id", function (req, res, next) {
-  movie.deleteMovie(req.params.id).then((movie) => {
-    console.log("movie", movie);
-    if (movie.deletedCount === 0) {
-      return res.status(404).send("La película con el id no existe");
+router.post("/movies", middleware.checkToken, function (req, res, next) {
+  if (req.role!=='Escritura') {
+    res.send( 400 ).json( {
+      success: false,
+      message: 'Role failed'
+    } );
+  } else {
+    const { error } = schema.validate(req.body);
+    if (error) {
+      return res.status(404).send(error);
     }
-    res.sendStatus(204);
-  });
+    Movie.create(
+      {   
+          name: req.body.name, 
+      }).then( result => {
+        console.log("Movies", result);
+          res.send(result);
+      });
+  }
+});
+
+router.put("/movies/:id", middleware.checkToken, function (req, res, next) {
+  if (req.role!=='Escritura') {
+    res.send( 400 ).json( {
+      success: false,
+      message: 'Role failed'
+    } );
+  } else {
+    Movie.update(req.body, {where: {id : req.params.id}}).then(result => {
+      console.log("movie", result);
+      if(result[0] !== 0) {
+          res.send(movie);
+        } else {
+          return res.status(404).send("La película con el id no existe");
+        }
+    });
+  }
+});
+
+router.delete("/movies/:id", middleware.checkToken, function (req, res, next) {
+  if (req.role!=='Escritura') {
+    res.send( 400 ).json( {
+      success: false,
+      message: 'Role failed'
+    } );
+  } else {
+    Movie.destroy({where:{id: req.params.id}}).then((result) => {
+      console.log("movie", result);
+      if (result === 0) {
+        res.status(404).send("La película con el id no existe");
+      }
+      else
+      {
+        res.status(204).send();
+      }
+    });
+  }
 });
 
 module.exports = router;
